@@ -1,21 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const signupController = require('../../controllers/signupController');
-const loginController = require('../../controllers/loginController');
-const logoutController = require('../../controllers/logoutController');
-const currentUserController = require('../../controllers/currentUserController');
 const authenticate = require('../../middlewares/authenticate');
+const upload = require('../../middlewares/upload');
+const updateAvatar = require('../../controllers/updateAvatar');
+const { signup } = require('../../controllers/signupController');
+const { login } = require('../../controllers/loginController');
 
-// Rejestracja
-router.post('/signup', signupController.signup);
+// Endpoint do aktualizacji avatara
+router.patch('/avatars', authenticate, upload.single('avatar'), updateAvatar);
 
-// Logowanie
-router.post('/login', loginController.login);
+// Endpoint do rejestracji użytkownika
+router.post('/signup', signup);
 
-// Wylogowanie
-router.get('/logout', authenticate, logoutController.logout);
-
-// Obecny użytkownik
-router.get('/current', authenticate, currentUserController.getCurrent);
+// Endpoint do logowania użytkownika
+router.post('/login', login);
 
 module.exports = router;
