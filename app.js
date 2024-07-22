@@ -1,3 +1,4 @@
+// Zewnętrzne moduły
 const express = require('express');
 const mongoose = require('mongoose');
 const morgan = require('morgan');
@@ -9,11 +10,13 @@ const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
+// Moduły lokalne
 const contactRoutes = require('./routes/api/contacts');
 const userRoutes = require('./routes/api/users');
-const User = require('./models/user');
-const { isImageAndTransform } = require('./services/helper');
+const validateImage = require('./services/validateImage');
+const authenticate = require('./middlewares/authenticate');
 
+// Inicjalizacja aplikacji
 const app = express();
 
 // Middleware
@@ -22,7 +25,7 @@ app.use(morgan('dev'));
 app.use(cors());
 app.use('/avatars', express.static(path.join(__dirname, 'public/avatars')));
 
-// Multer configuration
+// Konfiguracja Multera
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const tmpPath = path.join(__dirname, 'tmp'); // Temporary storage folder
@@ -41,20 +44,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// Middleware for user authentication
-const authenticate = require('./middlewares/authenticate');
-
-app.patch('/api/users/avatars', authenticate, upload.single('avatar'), async (req, res) => {
+// Endpoint dla aktualizacji awatara
+app.patch('/api/users/avatars', authenticate, upload.single('avatar'), validateImage, async (req, res) => {
   try {
-    if (!req.file) {
-      console.log('No file uploaded');
-      return res.status(400).json({
-        status: 'error',
-        code: 400,
-        message: 'File is required',
-      });
-    }
-
     if (!req.user || !req.user.id) {
       console.log('User is not authenticated or user ID is missing');
       return res.status(401).json({
@@ -66,47 +58,24 @@ app.patch('/api/users/avatars', authenticate, upload.single('avatar'), async (re
 
     const { id } = req.user;
     const { path: temporaryPath, filename } = req.file;
-    console.log(`Temporary file path: ${temporaryPath}`);
 
     const fileExtension = path.extname(filename);
     const newFileName = `${uuidv4()}${fileExtension}`;
     const newFilePath = path.join(__dirname, 'public/avatars', newFileName);
 
-    console.log(`New file path: ${newFilePath}`);
-
-    const isImageValid = await isImageAndTransform(temporaryPath);
-    console.log(`Is image valid: ${isImageValid}`);
-
-    if (!isImageValid) {
-      await fs.unlink(temporaryPath);
-      return res.status(400).json({
-        status: 'error',
-        code: 400,
-        message: 'Invalid image file',
-      });
-    }
-
-    const user = await User.findById(id);
-    if (!user) {
-      await fs.unlink(temporaryPath);
-      return res.status(404).json({
-        status: 'error',
-        code: 404,
-        message: 'User not found',
-      });
-    }
-
-    if (user.avatarURL) {
-      const oldAvatarPath = path.join(__dirname, 'public', user.avatarURL);
+    if (req.user.avatarURL) {
+      const oldAvatarPath = path.join(__dirname, 'public', req.user.avatarURL);
       await fs.unlink(oldAvatarPath).catch((err) => console.error('Error deleting old avatar:', err));
     }
 
     const image = await jimp.read(temporaryPath);
     await image.resize(250, 250).write(newFilePath);
 
+    await fs.unlink(temporaryPath); // Delete the temporary file after processing
+
     const avatarURL = `/avatars/${newFileName}`;
-    user.avatarURL = avatarURL;
-    await user.save();
+    req.user.avatarURL = avatarURL;
+    await req.user.save();
 
     return res.status(200).json({
       status: 'success',
@@ -125,13 +94,16 @@ app.patch('/api/users/avatars', authenticate, upload.single('avatar'), async (re
   }
 });
 
+// Routes
 app.use('/api/contacts', contactRoutes);
 app.use('/api/users', userRoutes);
 
+// 404 Error Handling
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found' });
 });
 
+// MongoDB Connection
 const dbURI = process.env.MONGODB_URI;
 
 mongoose
