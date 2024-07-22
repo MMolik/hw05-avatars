@@ -30,10 +30,8 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: 'Email or password is wrong' });
     }
 
-    // Utworzenie tokena
+    // Utworzenie tokena JWT
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    user.token = token;
-    await user.save();
 
     // Odpowiedź sukcesu
     res.status(200).json({
@@ -45,7 +43,7 @@ exports.login = async (req, res) => {
     });
   } catch (err) {
     // Obsługa błędów serwera
-    console.error(err);
+    console.error('Login error:', err);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
